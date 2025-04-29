@@ -9,6 +9,8 @@ def get_config():
     args.add_argument('--name', type=str)
     args.add_argument('--config', type=str, default=None)
 
+    args.add_argument("--debug", action="store_true")
+
     args.add_argument('--model', type=str, default='WT')
     args.add_argument('--dataset', type=str, default='mnist')
     args.add_argument('--epochs', type=int, default=0)
@@ -56,6 +58,12 @@ def get_config():
     elif c == 'WT-seq':
         conf['cls_loss_weight'] = 0.0
         conf['stages'] = 'sequential'
+    
+    elif c == '1x64':
+        conf['cls_loss_weight'] = 0.0
+        conf['dim'] = 64
+        conf['siren_depth'] = 1
+        
         
     else:
         raise ValueError(f'Unknown config {c}')

@@ -23,7 +23,7 @@ from meta_sgd import MetaSGD
 
 
 def build_classifier():
-    D = conf['siren_dim'][1]
+    D = conf['siren_dim'][0]
     if conf['model'] == 'WT':
         classifier = WT(dim=D, conf=conf).to(device)
     elif conf['model'] == 'NFN_NP':
@@ -108,9 +108,10 @@ if __name__ == '__main__':
     
     conf = get_config()
     device = conf['device']
+    project_name = "debug" if conf.get("debug") else "MWT-wx-implement"
     wandb.init(
         name=conf['name'],
-        project="MWT",
+        project=project_name,
         config=conf,
     )
 
