@@ -9,6 +9,8 @@ from data.augment import transform_train, TO_TENSOR_RESCALE
 from data.imagenet_dataloader import ImagenetDataset
 from data.modelnet_dataloader import ModelNet40
 
+from feat_datasets import FeatDateset
+
 
 def dl(ds, bs, shuffle, drop_last):
     return DataLoader(ds, batch_size=bs, shuffle=shuffle, num_workers=8, drop_last=drop_last)
@@ -19,7 +21,14 @@ def unpack(tp, conf, device):
         udf_points, distances, label = udf_points.to(device), distances.to(device), label.to(device)
         image = (udf_points, distances)
     else:
-        image, label = tp
+        #### patches for feat datasets
+        if len(tp) == 2:
+            image, label = tp
+        elif len(tp) == 3:
+            image, label, feat = tp
+        else:
+            raise NotImplementedError
+        
         image, label = image.to(device), label.to(device)
     return image, label
 
@@ -67,6 +76,20 @@ def fetch_dataset(conf):
         if conf['epochs'] == 0:
             conf['epochs'] = 10
         conf['omega'] = 10.0
+    
+    elif dataset == 'cifar10_feat':
+        H, W = 32, 32
+        conf['class_count'] = 10
+        conf['color_channels'] = 3
+
+        dataset_train = FeatDateset(type="cifar_10", train=True)
+        dataset_val_train = FeatDateset(type="cifar_10", train=True)
+        dataset_val_val = FeatDateset(type="cifar_10", train=False)
+        
+        if conf['epochs'] == 0:
+            conf['epochs'] = 10
+        
+        conf['omega'] = 10.0 
 
     elif dataset == 'cifar10_trainval': # take out 20% of training data and validate on that
         dataset_train_all = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=TO_TENSOR_RESCALE)

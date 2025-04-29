@@ -10,18 +10,22 @@ def run(use_cuda=0):
     """Args for EVOS(stepwise scheduler) with only one image"""
     args = [
         "--name",
-        "1x64_baseline_woclas",
+        "1x64_out1.0_omega10.0",
         "--config",
         "1x64",
         "--model",
         "WT",
         "--dataset",
-        "cifar10",
+        "cifar10_feat",
         "--device",
-        "cuda:0"
+        "cuda:0",
+
+        "--output_scale",
+        "1.0",
+
     ]
     _execute(args, use_cuda)
 
 if __name__ == "__main__":
-    run(0)
+    run(2)
 

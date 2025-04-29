@@ -10,6 +10,7 @@ def get_config():
     args.add_argument('--config', type=str, default=None)
 
     args.add_argument("--debug", action="store_true")
+    args.add_argument('--output_scale', type=float, default=0.1)
 
     args.add_argument('--model', type=str, default='WT')
     args.add_argument('--dataset', type=str, default='mnist')

@@ -109,7 +109,7 @@ if __name__ == '__main__':
 
     is_3d = conf['is_3d']
     siren_rgb = SirenModel(ch_in=(3 if is_3d else 2), ch_hiddens=conf['siren_dim'],
-                            ch_out=conf['color_channels'], omega=conf['omega']).to(device)
+                            ch_out=conf['color_channels'], conf=conf, omega=conf['omega']).to(device)
     param_groups_siren += [ {'params': list(siren_rgb.parameters()), 'lr': conf['lr_siren_rgb']} ]
     PI = siren_rgb.pass_indices.shape[0]
     print('Passing number of indices:', PI)

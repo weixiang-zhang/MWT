@@ -39,7 +39,7 @@ def get_pass_indices(siren):
 
 class SirenModel(nn.Module):
 
-    def __init__(self, ch_in, ch_hiddens, ch_out, omega=30.0):
+    def __init__(self, ch_in, ch_hiddens, ch_out, conf, omega=30.0):
         super(SirenModel, self).__init__()
         self.ch_out = ch_out
         self.omega = omega
@@ -56,7 +56,8 @@ class SirenModel(nn.Module):
             siren_base += layer_(dim, dim, index=1, dev=device, omega=omega)
 
         self.sirens = nn.ParameterList(siren_base)
-        self.out_scale = nn.Parameter(0.1 * torch.ones((ch_out,)))
+        out_scale_coff = conf.get("output_scale")
+        self.out_scale = nn.Parameter(out_scale_coff * torch.ones((ch_out,)))
         r_init = lambda size, a, b: a + (b - a) * torch.rand(size=size, device=device)
         ch_hidden = ch_hiddens[0]
         self.out = nn.Linear(dim, ch_out)
