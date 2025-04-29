@@ -22,21 +22,6 @@ from validation import validation
 from meta_sgd import MetaSGD
 
 
-def build_classifier():
-    D = conf['siren_dim'][0]
-    if conf['model'] == 'WT':
-        classifier = WT(dim=D, conf=conf).to(device)
-    elif conf['model'] == 'NFN_NP':
-        from nfn_network import InvariantNFN
-        classifier = InvariantNFN(dim=D, conf=conf, mode='NP').to(device)
-    elif conf['model'] == 'NFN_HNP':
-        from nfn_network import InvariantNFN
-        classifier = InvariantNFN(dim=D, conf=conf, mode='HNP').to(device)
-    else:
-        raise ValueError('unknown model')
-    return classifier
-
-
 def forward(image, sample_size, preview_dict, build_graph, inner_steps):
 
     # print('TAKING NUM STEPS', inner_steps)
@@ -93,15 +78,14 @@ def forward(image, sample_size, preview_dict, build_graph, inner_steps):
     for shape in shapes:
         w = weight_offset[:, c:(c+shape.numel())]
         w = w.view(*([N] + list(shape)))
-        if conf['cls_loss_weight'] == 0:
-            w = w.detach() # speed up, no need to backprop is this is the case
+        w = w.detach() # speed up, no need to backprop is this is the case
         l.append(w)
         c += shape.numel()
     assert c == siren_rgb.num_params(), 'c should be equal to weight count but %d != %d' % (c, WC)
     # make pairs of 2, and skip first layer
     l = [ (l[i], l[i+1]) for i in range(2, len(l) - 1, 2) ]
-    logits = classifier(l) # [N, 10]
-    return logits, loss_summed.mean(), psnr
+    # logits = classifier(l) # [N, 10]
+    return None, loss_summed.mean(), psnr
 
 
 if __name__ == '__main__':
@@ -122,7 +106,6 @@ if __name__ == '__main__':
     tot_batches = len(loader_train) * conf['epochs']
 
     param_groups_siren = []
-    param_groups_cls = []
 
     is_3d = conf['is_3d']
     siren_rgb = SirenModel(ch_in=(3 if is_3d else 2), ch_hiddens=conf['siren_dim'],
@@ -134,13 +117,11 @@ if __name__ == '__main__':
     meta_sgd = MetaSGD(conf, PI).to(device)
     param_groups_siren += [ {'params': list(meta_sgd.parameters()), 'lr': conf['lr_sgd_lrs']} ]
 
-    classifier = build_classifier()
-    param_groups_cls += [ {'params': list(classifier.parameters()), 'lr': conf['lr_classifier']} ]
+    # classifier = build_classifier()
 
     # now merge and count params
-    param_groups = (param_groups_siren + param_groups_cls)
+    param_groups = (param_groups_siren)
     tp_siren = sum([ p.numel() for pg in param_groups_siren for p in pg['params'] ])
-    tp_cls = sum([ p.numel() for pg in param_groups_cls for p in pg['params'] ])
 
     opts = []
     scheds = []
@@ -161,7 +142,6 @@ if __name__ == '__main__':
     val_data = {}
     # add num params as well
     val_data['params_siren'] = tp_siren
-    val_data['params_cls'] = tp_cls
 
     gpu_mem = 0
     accumulated = {}
@@ -172,21 +152,20 @@ if __name__ == '__main__':
 
     # check if there exists checkpoint, if so, load it
     checkpoint_file = (checkpoint_dir + conf['name'] + '.pt')
-    if os.path.exists(checkpoint_file):
-        print('[IMPORTANT] Found checkpoint, loading...')
-        checkpoint = torch.load(checkpoint_file, weights_only=True)
-        siren_rgb.load_state_dict(checkpoint['siren_rgb'])
-        classifier.load_state_dict(checkpoint['classifier'])
-        meta_sgd.load_state_dict(checkpoint['meta_sgd'])
-        #opt.load_state_dict(checkpoint['opt'])
-        #sched.load_state_dict(checkpoint['sched'])
-        for i, o in enumerate(opts):
-            o.load_state_dict(checkpoint['opts'][i])
-        for i, s in enumerate(scheds):
-            s.load_state_dict(checkpoint['scheds'][i])
-        global_i = checkpoint['global_i']
-        scaler.load_state_dict(checkpoint['scaler'])
-        print('Loaded checkpoint, starting from global_i', global_i)
+    # if os.path.exists(checkpoint_file):
+    #     print('[IMPORTANT] Found checkpoint, loading...')
+    #     checkpoint = torch.load(checkpoint_file, weights_only=True)
+    #     siren_rgb.load_state_dict(checkpoint['siren_rgb'])
+    #     meta_sgd.load_state_dict(checkpoint['meta_sgd'])
+    #     #opt.load_state_dict(checkpoint['opt'])
+    #     #sched.load_state_dict(checkpoint['sched'])
+    #     for i, o in enumerate(opts):
+    #         o.load_state_dict(checkpoint['opts'][i])
+    #     for i, s in enumerate(scheds):
+    #         s.load_state_dict(checkpoint['scheds'][i])
+    #     global_i = checkpoint['global_i']
+    #     scaler.load_state_dict(checkpoint['scaler'])
+    #     print('Loaded checkpoint, starting from global_i', global_i)
 
     first_epoch = True # after first epoch, we check gpu mem
     while True:
@@ -195,7 +174,6 @@ if __name__ == '__main__':
         TRAINING
         """
         print('Starting new epoch of training...')
-        classifier.train()
         epoch_start_time = time.time()
 
         for tp in loader_train:
@@ -211,20 +189,20 @@ if __name__ == '__main__':
             preview_dict = {}
             with autocast(device_type=device, dtype=torch.float16, enabled=conf['auto_cast']):
 
-                logits, inner_loss, psnr_running = forward(image, conf['sample_size'],
+                _, inner_loss, psnr_running = forward(image, conf['sample_size'],
                                     preview_dict if do_preview else None,
                                     build_graph=True,
                                     inner_steps=conf['inner_steps'])
                 psnr_running = psnr_running.mean()
-                cls_loss = F.cross_entropy(logits, label) # [N]
+
 
             # two-pass backward pass (we tried single pass and scaling cls_loss, but it was less stable)
-            scaler.scale(cls_loss).backward(retain_graph=True) # grads are scaled, but no problem as scaling is only multiplicative
-            cls_w = conf['cls_loss_weight']
-            for group in param_groups_siren:
-                for p in group['params']:
-                    if p.grad is not None:
-                        p.grad *= cls_w
+            # scaler.scale(cls_loss).backward(retain_graph=True) # grads are scaled, but no problem as scaling is only multiplicative
+            # cls_w = conf['cls_loss_weight']
+            # for group in param_groups_siren:
+            #     for p in group['params']:
+            #         if p.grad is not None:
+            #             p.grad *= cls_w
             scaler.scale(inner_loss).backward()
 
             # figure out which opt and sched based on global_i
@@ -255,12 +233,10 @@ if __name__ == '__main__':
             global_i += 1
             
             wandb_log = {
-                'cls_loss': float(cls_loss),
                 'inner_loss': float(inner_loss),
                 'done': float(p_global),
                 'lr': float(sched.get_last_lr()[0]),
                 'params_siren': tp_siren,
-                'params_cls': tp_cls,
                 'psnr_running': float(psnr_running),
             }
 
@@ -312,7 +288,6 @@ if __name__ == '__main__':
         VALIDATION
         """
         print('Running validation...!')
-        classifier.eval()
 
         val_start_time = time.time()
         validation(loader_val=loader_val_val, name='val', inner_steps=conf['inner_steps_test'],\
@@ -330,7 +305,6 @@ if __name__ == '__main__':
         """
         torch.save({
             'siren_rgb': siren_rgb.state_dict(),
-            'classifier': classifier.state_dict(),
             'meta_sgd': meta_sgd.state_dict(),
             #'opt': opt.state_dict(),
             #'sched': sched.state_dict(),
